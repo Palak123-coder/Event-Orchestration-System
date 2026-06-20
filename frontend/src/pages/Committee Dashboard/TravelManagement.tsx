@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   MessageCircle,
   Clock,
@@ -8,7 +8,6 @@ import {
   Eye,
   Send,
   Flag,
-  Download,
   ChevronLeft,
   ChevronRight,
   Plane,
@@ -20,120 +19,125 @@ import {
   Italic,
   List,
   ListOrdered,
-  X
+  X,
+  Loader2
 } from "lucide-react";
+import { api } from "../../lib/api";
+
+interface Query {
+  id: string;
+  participant_name: string;
+  participant_initials: string;
+  team_name: string;
+  category: string;
+  subject: string;
+  message: string;
+  status: string;
+  conversation: {
+    from: string;
+    text: string;
+    time: string;
+    isUser: boolean;
+  }[];
+  created_at: string;
+}
 
 export default function TravelManagement() {
-  const [selectedQuery, setSelectedQuery] = useState<number | null>(1);
+  const [queries, setQueries] = useState<Query[]>([]);
+  const [selectedQuery, setSelectedQuery] = useState<Query | null>(null);
   const [replyText, setReplyText] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterCategory, setFilterCategory] = useState("All Categories");
+  const [filterStatus, setFilterStatus] = useState("All Status");
 
-  const stats = [
-    { icon: MessageCircle, label: "Total Queries", value: 48, sublabel: "All time", color: "purple" },
-    { icon: MessageCircle, label: "Open", value: 12, sublabel: "Require attention", color: "orange" },
-    { icon: Clock, label: "Awaiting Response", value: 8, sublabel: "Participant replied", color: "blue" },
-    { icon: CheckCircle2, label: "Resolved", value: 28, sublabel: "This event", color: "green" },
-  ];
-
-  const queries = [
-    {
-      id: 1,
-      initials: "RS",
-      name: "Rahul Sharma",
-      team: "Team Alpha",
-      category: "Airport Pickup",
-      categoryIcon: Plane,
-      subject: "Airport pickup time confirmation",
-      priority: "Medium",
-      submitted: "22 Jun 2026\n09:15 AM",
-      status: "Open"
-    },
-    {
-      id: 2,
-      initials: "AM",
-      name: "Anita Mehta",
-      team: "Team Vega",
-      category: "Reimbursement",
-      categoryIcon: DollarSign,
-      subject: "Reimbursement form upload issue",
-      priority: "High",
-      submitted: "22 Jun 2026\n10:20 AM",
-      status: "Awaiting Response"
-    },
-    {
-      id: 3,
-      initials: "DK",
-      name: "Dev Kumar",
-      team: "Team ByteBuilders",
-      category: "Hotel Stay",
-      categoryIcon: Building,
-      subject: "Request for early check-in",
-      priority: "Medium",
-      submitted: "22 Jun 2026\n11:20 AM",
-      status: "Open"
-    },
-    {
-      id: 4,
-      initials: "NP",
-      name: "Neha Patel",
-      team: "Team Nova",
-      category: "Food & Dietary",
-      categoryIcon: Utensils,
-      subject: "Severe nut allergy – meal request",
-      priority: "High",
-      submitted: "22 Jun 2026\n12:35 PM",
-      status: "Open"
-    },
-    {
-      id: 5,
-      initials: "AY",
-      name: "Arjun Yadav",
-      team: "Team Frontend",
-      category: "Shuttle Service",
-      categoryIcon: Bus,
-      subject: "Shuttle schedule for team dinner",
-      priority: "Low",
-      submitted: "22 Jun 2026\n01:10 PM",
-      status: "Resolved"
-    },
-    {
-      id: 6,
-      initials: "RS",
-      name: "Riya Singh",
-      team: "Team Alpha",
-      category: "Reimbursement",
-      categoryIcon: DollarSign,
-      subject: "Clarification on eligible expenses",
-      priority: "Medium",
-      submitted: "22 Jun 2026\n02:05 PM",
-      status: "Awaiting Response"
-    },
-    {
-      id: 7,
-      initials: "VS",
-      name: "Vivek Sinha",
-      team: "Team CodeCrafters",
-      category: "Hotel Stay",
-      categoryIcon: Building,
-      subject: "Extra pillow request",
-      priority: "Low",
-      submitted: "22 Jun 2026\n03:18 PM",
-      status: "Resolved"
-    },
-    {
-      id: 8,
-      initials: "KB",
-      name: "Kavya Bhat",
-      team: "Team InnovateX",
-      category: "Airport Pickup",
-      categoryIcon: Plane,
-      subject: "Landing late night – pickup arrangement",
-      priority: "High",
-      submitted: "22 Jun 2026\n04:40 PM",
-      status: "Open"
+  // Fetch all queries from backend
+  const fetchQueries = async () => {
+    try {
+      setLoading(true);
+      const res = await api.get("/api/committee/travel/queries");
+      const fetchedQueries = res.data.queries || [];
+      setQueries(fetchedQueries);
+      
+      // Auto-select first query if none selected
+      if (fetchedQueries.length > 0 && !selectedQuery) {
+        setSelectedQuery(fetchedQueries[0]);
+      }
+    } catch (err) {
+      console.error("Failed to fetch queries", err);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  useEffect(() => {
+    fetchQueries();
+  }, []);
+
+  // Refresh selected query data after changes
+  useEffect(() => {
+    if (selectedQuery) {
+      const updated = queries.find(q => q.id === selectedQuery.id);
+      if (updated) setSelectedQuery(updated);
+    }
+  }, [queries]);
+
+  // Handle Send Reply
+  const handleSendReply = async () => {
+    if (!replyText.trim() || !selectedQuery) return;
+    try {
+      setSending(true);
+      await api.post(`/api/committee/travel/queries/${selectedQuery.id}/reply`, {
+        reply_text: replyText
+      });
+      setReplyText("");
+      await fetchQueries();
+    } catch (err) {
+      console.error("Failed to send reply", err);
+      alert("Failed to send reply");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // Handle Mark Resolved
+  const handleMarkResolved = async () => {
+    if (!selectedQuery) return;
+    try {
+      await api.patch(`/api/committee/travel/queries/${selectedQuery.id}/status`, {
+        status: "Resolved"
+      });
+      await fetchQueries();
+    } catch (err) {
+      console.error("Failed to update status", err);
+      alert("Failed to update status");
+    }
+  };
+
+  // Handle Escalate
+  const handleEscalate = async () => {
+    alert("Query escalated to senior committee member");
+  };
+
+  // Dynamic Stats
+  const stats = [
+    { icon: MessageCircle, label: "Total Queries", value: queries.length, sublabel: "All time", color: "purple" },
+    { icon: MessageCircle, label: "Open", value: queries.filter(q => q.status === "Open").length, sublabel: "Require attention", color: "orange" },
+    { icon: Clock, label: "Awaiting Response", value: queries.filter(q => q.status === "Awaiting Response").length, sublabel: "Participant replied", color: "blue" },
+    { icon: CheckCircle2, label: "Resolved", value: queries.filter(q => q.status === "Resolved").length, sublabel: "This event", color: "green" },
   ];
 
-  const selectedQueryData = queries.find(q => q.id === selectedQuery);
+  // Filtered queries
+  const filteredQueries = queries.filter(q => {
+    const matchesSearch = searchTerm === "" || 
+      q.participant_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      q.team_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      q.subject.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = filterCategory === "All Categories" || q.category === filterCategory;
+    const matchesStatus = filterStatus === "All Status" || q.status === filterStatus;
+    return matchesSearch && matchesCategory && matchesStatus;
+  });
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -144,14 +148,38 @@ export default function TravelManagement() {
     }
   };
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case "High": return "bg-red-50 text-red-700 border border-red-200";
-      case "Medium": return "bg-orange-50 text-orange-700 border border-orange-200";
-      case "Low": return "bg-green-50 text-green-700 border border-green-200";
-      default: return "bg-gray-100 text-gray-700";
+  const getCategoryIcon = (category: string) => {
+    if (category.includes("Airport") || category.includes("Transport") || category.includes("Pickup")) return Plane;
+    if (category.includes("Reimbursement")) return DollarSign;
+    if (category.includes("Hotel") || category.includes("Accommodation")) return Building;
+    if (category.includes("Food") || category.includes("Dietary")) return Utensils;
+    if (category.includes("Shuttle") || category.includes("Bus")) return Bus;
+    return MessageCircle;
+  };
+
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return "N/A";
+    try {
+      return new Date(dateStr).toLocaleString('en-GB', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch {
+      return dateStr;
     }
   };
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <Loader2 className="w-8 h-8 text-purple-600 animate-spin mb-4" />
+        <p className="text-gray-500">Loading queries...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -201,33 +229,33 @@ export default function TravelManagement() {
                 <input
                   type="text"
                   placeholder="Search by participant, team, subject..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
               </div>
-              <select className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white">
+              <select 
+                value={filterCategory}
+                onChange={(e) => setFilterCategory(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+              >
                 <option>All Categories</option>
-                <option>Airport Pickup</option>
+                <option>Airport & Transport</option>
+                <option>Accommodation</option>
                 <option>Reimbursement</option>
-                <option>Hotel Stay</option>
                 <option>Food & Dietary</option>
-                <option>Shuttle Service</option>
+                <option>Other</option>
               </select>
-              <select className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white">
+              <select 
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+              >
                 <option>All Status</option>
                 <option>Open</option>
                 <option>Awaiting Response</option>
                 <option>Resolved</option>
               </select>
-              <select className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white">
-                <option>All Priority</option>
-                <option>High</option>
-                <option>Medium</option>
-                <option>Low</option>
-              </select>
-              <button className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2">
-                <Filter size={16} />
-                Filter
-              </button>
             </div>
           </div>
 
@@ -239,71 +267,74 @@ export default function TravelManagement() {
                   <th className="p-4 font-medium">Participant / Team</th>
                   <th className="p-4 font-medium">Category</th>
                   <th className="p-4 font-medium">Subject</th>
-                  <th className="p-4 font-medium">Priority</th>
                   <th className="p-4 font-medium">Submitted</th>
                   <th className="p-4 font-medium">Status</th>
                   <th className="p-4 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {queries.map((query) => (
-                  <tr
-                    key={query.id}
-                    onClick={() => setSelectedQuery(query.id)}
-                    className={`hover:bg-gray-50 transition cursor-pointer ${
-                      selectedQuery === query.id ? "bg-purple-50 border-l-4 border-l-purple-600" : ""
-                    }`}
-                  >
-                    <td className="p-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-purple-100 flex items-center justify-center text-purple-700 font-bold text-xs">
-                          {query.initials}
-                        </div>
-                        <div>
-                          <p className="font-semibold text-gray-900 text-sm">{query.name}</p>
-                          <p className="text-xs text-gray-500">{query.team}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex items-center gap-2">
-                        <query.categoryIcon size={16} className="text-gray-600" />
-                        <span className="text-gray-700 text-sm">{query.category}</span>
-                      </div>
-                    </td>
-                    <td className="p-4 text-gray-700 text-sm max-w-[200px] truncate">{query.subject}</td>
-                    <td className="p-4">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getPriorityColor(query.priority)}`}>
-                        {query.priority}
-                      </span>
-                    </td>
-                    <td className="p-4 text-gray-600 text-xs whitespace-pre-line">{query.submitted}</td>
-                    <td className="p-4">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(query.status)}`}>
-                        {query.status}
-                      </span>
-                    </td>
-                    <td className="p-4">
-                      <button className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition">
-                        <Eye size={16} />
-                      </button>
+                {filteredQueries.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="p-8 text-center text-gray-500">
+                      No queries found.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  filteredQueries.map((query) => {
+                    const CategoryIcon = getCategoryIcon(query.category);
+                    return (
+                      <tr
+                        key={query.id}
+                        onClick={() => setSelectedQuery(query)}
+                        className={`hover:bg-gray-50 transition cursor-pointer ${
+                          selectedQuery?.id === query.id ? "bg-purple-50 border-l-4 border-l-purple-600" : ""
+                        }`}
+                      >
+                        <td className="p-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-full bg-purple-100 flex items-center justify-center text-purple-700 font-bold text-xs">
+                              {query.participant_initials}
+                            </div>
+                            <div>
+                              <p className="font-semibold text-gray-900 text-sm">{query.participant_name}</p>
+                              <p className="text-xs text-gray-500">{query.team_name}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <div className="flex items-center gap-2">
+                            <CategoryIcon size={16} className="text-gray-600" />
+                            <span className="text-gray-700 text-sm">{query.category}</span>
+                          </div>
+                        </td>
+                        <td className="p-4 text-gray-700 text-sm max-w-[200px] truncate">{query.subject}</td>
+                        <td className="p-4 text-gray-600 text-xs">{formatDate(query.created_at)}</td>
+                        <td className="p-4">
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(query.status)}`}>
+                            {query.status}
+                          </span>
+                        </td>
+                        <td className="p-4">
+                          <button className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition">
+                            <Eye size={16} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
 
           {/* Pagination */}
           <div className="p-4 border-t border-gray-200 flex items-center justify-between">
-            <p className="text-sm text-gray-600">Showing 1 to 8 of 48 entries</p>
+            <p className="text-sm text-gray-600">
+              Showing {filteredQueries.length} of {queries.length} entries
+            </p>
             <div className="flex gap-2">
               <button className="px-3 py-1 border rounded hover:bg-gray-50 text-sm"><ChevronLeft size={16} /></button>
               <button className="px-3 py-1 bg-purple-600 text-white rounded text-sm">1</button>
-              <button className="px-3 py-1 border rounded hover:bg-gray-50 text-sm">2</button>
-              <button className="px-3 py-1 border rounded hover:bg-gray-50 text-sm">3</button>
-              <span className="px-2 py-1 text-gray-500">...</span>
-              <button className="px-3 py-1 border rounded hover:bg-gray-50 text-sm">6</button>
               <button className="px-3 py-1 border rounded hover:bg-gray-50 text-sm"><ChevronRight size={16} /></button>
             </div>
           </div>
@@ -313,27 +344,26 @@ export default function TravelManagement() {
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold text-lg text-gray-900">Query Detail</h3>
-            <button className="text-gray-400 hover:text-gray-600">
-              <X size={20} />
-            </button>
+            {selectedQuery && (
+              <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(selectedQuery.status)}`}>
+                {selectedQuery.status}
+              </span>
+            )}
           </div>
 
-          {selectedQueryData ? (
+          {selectedQuery ? (
             <>
               {/* User Info */}
               <div className="flex items-center justify-between mb-4 pb-4 border-b border-gray-200">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-700 font-bold text-sm">
-                    {selectedQueryData.initials}
+                    {selectedQuery.participant_initials}
                   </div>
                   <div>
-                    <p className="font-semibold text-gray-900 text-sm">{selectedQueryData.name}</p>
-                    <p className="text-xs text-gray-500">{selectedQueryData.team}</p>
+                    <p className="font-semibold text-gray-900 text-sm">{selectedQuery.participant_name}</p>
+                    <p className="text-xs text-gray-500">{selectedQuery.team_name}</p>
                   </div>
                 </div>
-                <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(selectedQueryData.status)}`}>
-                  {selectedQueryData.status}
-                </span>
               </div>
 
               {/* Category & Submitted */}
@@ -342,25 +372,53 @@ export default function TravelManagement() {
                   <p className="text-xs text-gray-500 mb-1 flex items-center gap-1">
                     <Plane size={12} /> Category
                   </p>
-                  <p className="text-sm font-medium text-gray-900">{selectedQueryData.category}</p>
+                  <p className="text-sm font-medium text-gray-900">{selectedQuery.category}</p>
                 </div>
                 <div>
                   <p className="text-xs text-gray-500 mb-1 flex items-center gap-1">
                     <Clock size={12} /> Submitted
                   </p>
-                  <p className="text-sm font-medium text-gray-900 whitespace-pre-line text-xs">{selectedQueryData.submitted}</p>
+                  <p className="text-sm font-medium text-gray-900 text-xs">{formatDate(selectedQuery.created_at)}</p>
                 </div>
               </div>
 
-              {/* Participant Question */}
-              <div className="mb-4 pb-4 border-b border-gray-200">
-                <p className="text-xs font-medium text-gray-700 mb-2">Participant Question</p>
-                <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-700 border border-gray-200">
-                  Hello HackFlow team,<br /><br />
-                  I will be landing at BLR Airport (T1) on 21 June at 11:45 PM. Can you please confirm the pickup time and location for the organised shuttle?<br /><br />
-                  Thanks!
+              {/* Conversation History */}
+              {selectedQuery.conversation && selectedQuery.conversation.length > 0 && (
+                <div className="mb-4 pb-4 border-b border-gray-200">
+                  <p className="text-xs font-medium text-gray-700 mb-3">Response History</p>
+                  <div className="space-y-3 max-h-60 overflow-y-auto">
+                    {selectedQuery.conversation.map((msg, idx) => (
+                      <div key={idx} className="flex gap-3">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0 ${
+                          msg.isUser 
+                            ? "bg-blue-100 text-blue-700" 
+                            : "bg-purple-100 text-purple-700"
+                        }`}>
+                          {msg.isUser ? "P" : "C"}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <p className="text-sm font-semibold text-gray-900">
+                              {msg.isUser ? selectedQuery.participant_name : "Committee (You)"}
+                            </p>
+                            {!msg.isUser && (
+                              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+                                Committee
+                              </span>
+                            )}
+                            <span className="text-xs text-gray-500 ml-auto">
+                              {formatDate(msg.time)}
+                            </span>
+                          </div>
+                          <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-700 border border-gray-200">
+                            {msg.text}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Your Reply */}
               <div className="mb-4">
@@ -373,7 +431,7 @@ export default function TravelManagement() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none mb-2"
                 ></textarea>
                 
-                {/* Formatting Toolbar - Removed Link and Paperclip */}
+                {/* Formatting Toolbar */}
                 <div className="flex items-center gap-1 p-2 border border-gray-200 rounded-lg mb-3">
                   <button className="p-1.5 hover:bg-gray-100 rounded"><Bold size={14} /></button>
                   <button className="p-1.5 hover:bg-gray-100 rounded"><Italic size={14} /></button>
@@ -383,43 +441,29 @@ export default function TravelManagement() {
 
                 {/* Action Buttons */}
                 <div className="flex gap-2">
-                  <button className="flex-1 px-4 py-2 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 transition flex items-center justify-center gap-2 text-sm">
-                    <Send size={16} />
+                  <button 
+                    onClick={handleSendReply}
+                    disabled={sending || !replyText.trim()}
+                    className="flex-1 px-4 py-2 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 transition flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
                     Send Reply
                   </button>
-                  <button className="px-3 py-2 border border-green-300 text-green-700 font-medium rounded-lg hover:bg-green-50 transition flex items-center gap-2 text-sm">
+                  <button 
+                    onClick={handleMarkResolved}
+                    disabled={selectedQuery.status === "Resolved"}
+                    className="px-3 py-2 border border-green-300 text-green-700 font-medium rounded-lg hover:bg-green-50 transition flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
                     <CheckCircle2 size={16} />
                     Mark Resolved
                   </button>
-                  <button className="px-3 py-2 border border-orange-300 text-orange-700 font-medium rounded-lg hover:bg-orange-50 transition flex items-center gap-2 text-sm">
+                  <button 
+                    onClick={handleEscalate}
+                    className="px-3 py-2 border border-orange-300 text-orange-700 font-medium rounded-lg hover:bg-orange-50 transition flex items-center gap-2 text-sm"
+                  >
                     <Flag size={16} />
                     Escalate
                   </button>
-                </div>
-              </div>
-
-              {/* Response History */}
-              <div>
-                <p className="text-xs font-medium text-gray-700 mb-3">Response History</p>
-                <div className="space-y-3">
-                  <div className="flex gap-3">
-                    <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center text-purple-700 font-bold text-xs flex-shrink-0">
-                      AS
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <p className="text-sm font-semibold text-gray-900">Aarav Sharma (You)</p>
-                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">Committee</span>
-                        <span className="text-xs text-gray-500 ml-auto text-right">22 Jun 2026<br />09:28 AM</span>
-                      </div>
-                      <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-700 border border-gray-200">
-                        Hi Rahul,<br /><br />
-                        Thanks for sharing the details. The shuttle from BLR Airport (T1) will be available at 11:30 PM near Gate 4.<br /><br />
-                        Please look for the HackFlow signage.<br /><br />
-                        Safe travels!
-                      </div>
-                    </div>
-                  </div>
                 </div>
               </div>
             </>

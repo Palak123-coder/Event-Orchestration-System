@@ -19,18 +19,24 @@ import { api } from "../lib/api";
 
 async function apiLogin(email: string, password: string): Promise<AuthResponse> {
   try {
+    console.log("🔐 Attempting committee login...");
     const res = await api.post("/api/auth/login", { email, password });
+    console.log("✅ Committee login successful");
     return res.data;
   } catch (err: any) {
+    console.error("❌ Committee login failed:", err.response?.data);
     throw new Error(err.response?.data?.detail ?? "Login failed");
   }
 }
 
 async function apiParticipantLogin(email: string, password: string): Promise<AuthResponse> {
   try {
+    console.log("🔐 Attempting participant login...");
     const res = await api.post("/api/auth/participant-login", { email, password });
+    console.log("✅ Participant login successful");
     return res.data;
   } catch (err: any) {
+    console.error("❌ Participant login failed:", err.response?.data);
     throw new Error(err.response?.data?.detail ?? "Login failed");
   }
 }
@@ -51,7 +57,7 @@ export default function LoginPage() {
   
   // UI State
   const [mode, setMode] = useState<Mode>("login");
-  const [role, setRole] = useState("Admin"); // Defaulted to Admin for committee portal
+  const [role, setRole] = useState("Participant");
 
   // Form State
   const [name, setName] = useState("");
@@ -72,7 +78,7 @@ export default function LoginPage() {
           navigate("/judge");
         } catch (err: any) {
           setError(err.response?.data?.detail ?? "Invalid or expired invitation link");
-          setRole("Judge"); // Visually set them to Judge role for context
+          setRole("Judge");
         } finally {
           setLoading(false);
         }
@@ -86,12 +92,16 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     
+    console.log("🚀 Login attempt:", { role, email, mode });
+    
     try {
       let data: AuthResponse;
       if (mode === "login") {
         if (role === "Participant") {
+          console.log("👤 Using participant login endpoint");
           data = await apiParticipantLogin(email, password);
         } else {
+          console.log("👔 Using committee login endpoint");
           data = await apiLogin(email, password);
         }
       } else {
@@ -103,17 +113,25 @@ export default function LoginPage() {
         data = await apiSignup(name.trim(), email, password);
       }
       
+      console.log("✅ Login successful, storing token");
       
-      // Store token and redirect
+      // Store token and redirect based on role
       if (role === "Participant") {
         localStorage.setItem("participant_token", data.access_token);
+        console.log("🔑 Stored participant_token");
         navigate("/participant");
+      } else if (role === "Judge") {
+        localStorage.setItem("evaluator_token", data.access_token);
+        console.log("🔑 Stored evaluator_token");
+        navigate("/judge");
       } else {
         localStorage.setItem("committee_token", data.access_token);
+        console.log("🔑 Stored committee_token");
         navigate("/dashboard");
       }
       
     } catch (err: unknown) {
+      console.error("❌ Login error:", err);
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setLoading(false);
@@ -196,7 +214,7 @@ export default function LoginPage() {
 
           <p className="text-center text-gray-500 mt-3">Choose your role</p>
 
-          {/* ROLE (Visual Only for now, but retains your UI) */}
+          {/* ROLE SELECTION */}
           <div className="grid grid-cols-3 gap-4 mt-8">
             <RoleCard
               title="Participant"
@@ -226,7 +244,7 @@ export default function LoginPage() {
                 type="button"
                 onClick={() => {
                   setMode(item);
-                  setError(""); // Clear errors when switching modes
+                  setError("");
                 }}
                 className={`flex-1 py-4 font-semibold transition-colors ${
                   mode === item ? "bg-purple-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
@@ -266,7 +284,6 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              minLength={8}
               autoComplete={mode === "login" ? "current-password" : "new-password"}
               className="w-full border rounded-xl p-4 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition"
             />
@@ -331,7 +348,7 @@ function RoleCard({
 }) {
   return (
     <button
-      type="button" // Prevents accidentally submitting the form when clicking a role
+      type="button"
       onClick={onClick}
       className={`border rounded-2xl p-6 flex flex-col items-center gap-3 transition-colors ${
         active ? "border-purple-500 bg-purple-50 text-purple-700" : "border-gray-200 hover:border-purple-200"

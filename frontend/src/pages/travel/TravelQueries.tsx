@@ -47,12 +47,16 @@ export default function TravelQueries() {
     try {
       setLoading(true);
       const res = await api.get("/api/participant/travel/queries");
-      setQueries(res.data.queries || []);
-      if (res.data.queries?.length > 0 && !activeQuery) {
-        setActiveQuery(res.data.queries[0].id);
+      console.log("📥 Fetched queries:", res.data.queries);
+      const fetchedQueries = res.data.queries || [];
+      setQueries(fetchedQueries);
+      
+      // Auto-select first query if none selected
+      if (fetchedQueries.length > 0 && !activeQuery) {
+        setActiveQuery(fetchedQueries[0].id);
       }
     } catch (err) {
-      console.error("Failed to fetch queries", err);
+      console.error("❌ Failed to fetch queries", err);
     } finally {
       setLoading(false);
     }
@@ -61,6 +65,16 @@ export default function TravelQueries() {
   useEffect(() => {
     fetchQueries();
   }, []);
+
+  // Refresh selected query when queries update
+  useEffect(() => {
+    if (activeQuery) {
+      const updated = queries.find(q => q.id === activeQuery);
+      if (updated) {
+        console.log("🔄 Active query updated:", updated);
+      }
+    }
+  }, [queries, activeQuery]);
 
   const submitQuery = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -103,7 +117,7 @@ export default function TravelQueries() {
 
   const stats = [
     { icon: MessageCircle, label: "Total Queries", value: queries.length, color: "purple" },
-    { icon: Clock, label: "Under Review", value: queries.filter((q) => q.status === "Under Review").length, color: "blue" },
+    { icon: Clock, label: "Under Review", value: queries.filter((q) => q.status === "Under Review" || q.status === "Submitted").length, color: "blue" },
     { icon: MessageCircle, label: "Committee Replied", value: queries.filter((q) => q.status === "Committee Replied").length, color: "indigo" },
     { icon: CheckCircle2, label: "Resolved", value: queries.filter((q) => q.status === "Resolved").length, color: "green" }
   ];
@@ -115,6 +129,7 @@ export default function TravelQueries() {
   ];
 
   const formatDate = (dateStr: string) => {
+    if (!dateStr) return "N/A";
     try {
       return new Date(dateStr).toLocaleString("en-GB", {
         day: "numeric",
@@ -133,7 +148,7 @@ export default function TravelQueries() {
     const currentIndex = steps.indexOf(status);
     return steps.map((step, index) => ({
       status: step,
-      time: index === 0 && activeQueryData ? formatDate(activeQueryData.created_at) : index <= currentIndex ? "—" : "—",
+      time: index === 0 && activeQueryData ? formatDate(activeQueryData.created_at) : "—",
       completed: index <= currentIndex,
       current: index === currentIndex
     }));
@@ -326,32 +341,47 @@ export default function TravelQueries() {
                 </p>
               </div>
 
-              {/* Messages */}
+              {/* Messages - Show ALL messages from conversation */}
               <div className="space-y-4 mb-4 max-h-96 overflow-y-auto">
-                {activeQueryData.conversation.map((msg, index) => (
-                  <div key={index} className={msg.isUser ? "text-right" : "text-left"}>
-                    <p className="text-xs font-medium text-gray-600 mb-1">{msg.from}</p>
-                    <div
-                      className={`inline-block p-3 rounded-xl text-left max-w-full ${
-                        msg.isUser ? "bg-purple-100 text-gray-900" : "bg-gray-100 text-gray-900"
-                      }`}
-                    >
-                      <p className="text-sm">{msg.text}</p>
+                {activeQueryData.conversation && activeQueryData.conversation.length > 0 ? (
+                  activeQueryData.conversation.map((msg, index) => (
+                    <div key={index} className={msg.isUser ? "text-right" : "text-left"}>
+                      <p className="text-xs font-medium text-gray-600 mb-1">{msg.from}</p>
+                      <div
+                        className={`inline-block p-3 rounded-xl text-left max-w-full ${
+                          msg.isUser 
+                            ? "bg-purple-100 text-gray-900" 
+                            : "bg-indigo-50 text-gray-900 border border-indigo-200"
+                        }`}
+                      >
+                        <p className="text-sm">{msg.text}</p>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">{formatDate(msg.time)}</p>
                     </div>
-                    <p className="text-xs text-gray-500 mt-1">{formatDate(msg.time)}</p>
+                  ))
+                ) : (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
+                    <div className="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="text-blue-600 text-xs font-bold">i</span>
+                    </div>
+                    <p className="text-sm text-blue-800">
+                      No conversation yet. The committee will respond to your query soon.
+                    </p>
                   </div>
-                ))}
+                )}
               </div>
 
               {/* Info Message */}
-              <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 flex items-start gap-2">
-                <div className="w-5 h-5 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <span className="text-indigo-600 text-xs font-bold">i</span>
+              {activeQueryData.status === "Submitted" && (
+                <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 flex items-start gap-2">
+                  <div className="w-5 h-5 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <span className="text-indigo-600 text-xs font-bold">i</span>
+                  </div>
+                  <p className="text-sm text-indigo-800">
+                    Only the committee can reply to this query. You will be notified once they respond.
+                  </p>
                 </div>
-                <p className="text-sm text-indigo-800">
-                  Only the committee can reply to this query. You will be notified once they respond.
-                </p>
-              </div>
+              )}
             </div>
           ) : (
             <div className="bg-white rounded-xl border border-gray-200 p-6 text-center">
